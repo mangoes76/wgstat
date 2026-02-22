@@ -29,6 +29,19 @@ confirm() {
   done
 }
 
+# Function specifically for Docker confirmation (defaults to No)
+confirm_container() {
+  local prompt="$1"
+  while true; do
+    read -p "$prompt (y/N): " choice
+    case "$choice" in
+    [Yy]) return 0 ;;
+    [Nn] | "") return 1 ;; # Accept empty input as "no"
+    *) echo "Invalid input. Please enter y or n, or press Enter for no." ;;
+    esac
+  done
+}
+
 # Function to prompt for and validate Docker container
 get_docker_container() {
   while true; do
@@ -72,6 +85,15 @@ install_script() {
   chmod +x "$SCRIPT_PATH"
   echo "Set execute permission for $SCRIPT_PATH."
 
+  # Ask if the user if Wireguard is installed in a docker container
+  local exec_cmd=""
+  if confirm_container "Is Wireguard running inside a Docker container?"; then
+    # Get Docker configuration (this function sets the exec_cmd variable)
+    get_docker_container
+  else
+    exec_cmd="$SCRIPT_PATH"
+  fi  
+
   # Create necessary directories for the database
   if [ ! -d "$DB_PATH" ]; then
     mkdir -p "$DB_PATH"
@@ -82,7 +104,7 @@ install_script() {
     echo "Directory already exists: $DB_PATH."
   fi
 
-  # Ask for systemd timer interval in seconds (between 10 and 600)
+  # Ask for systemd timer interval in seconds (between 30 and 300)
   local interval_sec
   while true; do
     read -p "Enter the interval to update stats (30-300 seconds, default: 60): " interval
@@ -93,15 +115,6 @@ install_script() {
       echo "Invalid input. Interval must be between 30 and 300 seconds."
     fi
   done
-
-  # Ask if the user if Wireguard is installed in a docker container
-  local exec_cmd=""
-  if confirm "Is Wireguard running inside a Docker container?"; then
-    # Get Docker configuration (this function sets the exec_cmd variable)
-    get_docker_container
-  else
-    exec_cmd="$SCRIPT_PATH"
-  fi
   
   # Create the systemd service unit file inline with logging to journal
   cat <<EOF > "$SYSTEMD_SERVICE"
@@ -113,17 +126,15 @@ Type=oneshot
 ExecStart=$exec_cmd update all
 StandardOutput=journal
 StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
 EOF
 
-    # Create the systemd timer unit file inline with AccuracySec set to 1 second
-    cat <<EOF > "$SYSTEMD_TIMER"
+  # Create the systemd timer unit file inline with AccuracySec set to 1 second
+  cat <<EOF > "$SYSTEMD_TIMER"
 [Unit]
 Description=$SCRIPT_NAME Timer
 
 [Timer]
+OnActiveSec=10s
 OnUnitActiveSec=${interval}s
 AccuracySec=1s
 
@@ -134,11 +145,7 @@ EOF
   # Reload systemd, enable and start the timer
   systemctl daemon-reload >/dev/null 2>&1
   systemctl enable --now "${SCRIPT_NAME}.timer" >/dev/null 2>&1
-  systemctl enable --now "${SCRIPT_NAME}.service" >/dev/null 2>&1
   echo "$SCRIPT_NAME installed successfully and will run every ${interval} seconds!"
-
-  # Optionally, source the downloaded script to finalize installation if needed
-  # source "$SCRIPT_PATH" >/dev/null || echo "Something went wrong!"
 }
 
 # Function to uninstall the script and systemd timer/service

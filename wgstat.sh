@@ -451,10 +451,8 @@ main() {
         interfaces=$($WG_CMD show interfaces 2>/dev/null)
         [[ -z $interfaces ]] && handle_error $ERR_NO_INTERFACES_FOUND
         for iface in $interfaces; do
-          { update_interface "$iface" && echo "Interface $iface updated at $(date '+%Y-%m-%d %H:%M:%S')" || handle_error $?; } # &
+          { update_interface "$iface" && echo "Interface $iface updated at $(date '+%Y-%m-%d %H:%M:%S')" || handle_error $?; }
         done
-        # Optionally, wait for all background jobs to finish.
-        # wait
       else
         update_interface "$interface_name" && echo "Interface $interface_name updated at $(date '+%Y-%m-%d %H:%M:%S')" || handle_error $?
       fi
