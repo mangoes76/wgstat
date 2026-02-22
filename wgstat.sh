@@ -2,6 +2,7 @@
 
 # Variables
 SCRIPT_NAME=$(basename "$0")
+WG_CMD="wg"
 DB_PATH="/var/lib/$SCRIPT_NAME"
 
 # Error codes
@@ -16,6 +17,8 @@ ERR_REMOVE_FAILED=17
 ERR_ROOT_PRIVILEGE_REQUIRED=18
 ERR_FILE_WRITE_FAILED=19
 ERR_NO_INTERFACES_FOUND=20
+ERR_INVALID_OPTION=21
+ERR_INVALID_CONTAINER_NAME=22
 
 # Function to calculate time difference
 time_diff() {
@@ -103,7 +106,7 @@ update_interface() {
   
   # Get WireGuard information in one call
   local wg_dump
-  wg_dump=$(wg show "$interface_name" dump 2>&1) || return $ERR_INTERFACE_NOT_EXIST
+  wg_dump=$($WG_CMD show "$interface_name" dump 2>&1) || return $ERR_INTERFACE_NOT_EXIST  
  
   # Load or create JSON data
   local json_data
@@ -348,7 +351,10 @@ flush_interface() {
 
 show_help() {
   cat <<EOF
-Usage: $SCRIPT_NAME <cmd> [<args>]
+Usage: $SCRIPT_NAME [-c <container_name>] <cmd> [<args>]
+
+Options:
+  -c, --container <name>           Execute WireGuard commands inside the specified Docker container.
 
 Commands:
   show [<interface> | interfaces]  Show details of a specific WireGuard interface or list all interfaces.
@@ -366,6 +372,7 @@ EOF
 
 handle_error() {
   local error_code=$1
+  local invalid_option=$2
   case $error_code in
     $ERR_UNKNOWN_COMMAND) ;; # echo "Error: Unknown command provided." >&2 
     $ERR_INTERFACE_NAME_REQUIRED) echo "Error: Interface name is required." >&2 ;;
@@ -378,6 +385,8 @@ handle_error() {
     $ERR_ROOT_PRIVILEGE_REQUIRED) echo "Error: Root privileges are required." >&2 ;;
     $ERR_FILE_WRITE_FAILED) echo "Error: Failed to write to the file." >&2 ;;
     $ERR_NO_INTERFACES_FOUND) ;; # echo "Error: No WireGuard interfaces found." >&2
+    $ERR_INVALID_OPTION) echo "Error: Unknown option $invalid_option." >&2;;
+    $ERR_INVALID_CONTAINER_NAME) echo "Error: Invalid Docker container name." >&2;;
     *) echo "Error: An unknown error occurred." >&2 ;;
   esac
   exit $error_code
@@ -439,7 +448,7 @@ main() {
     update)
       [ "$EUID" -eq 0 ] || handle_error $ERR_ROOT_PRIVILEGE_REQUIRED
       if [ "$interface_name" == "all" ]; then
-        interfaces=$(wg show interfaces 2>/dev/null)
+        interfaces=$($WG_CMD show interfaces 2>/dev/null)
         [[ -z $interfaces ]] && handle_error $ERR_NO_INTERFACES_FOUND
         for iface in $interfaces; do
           { update_interface "$iface" && echo "Interface $iface updated at $(date '+%Y-%m-%d %H:%M:%S')" || handle_error $?; } # &
@@ -470,6 +479,24 @@ main() {
 
   return 0
 }
+
+# Parse global options before running main
+while [[ "$1" == -* ]]; do
+  case "$1" in
+    -c|--container)
+      if [[ ! "$2" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+        handle_error $ERR_INVALID_CONTAINER_NAME
+      fi    
+      WG_CMD="docker exec $2 wg"
+      shift 2
+      ;;
+    *)
+      echo "Usage: $SCRIPT_NAME <cmd> [<args>]"
+      echo "For more information on available commands, use '$SCRIPT_NAME help'."
+      handle_error $ERR_INVALID_OPTION "$1"
+      ;;
+  esac
+done
 
 main "$@"
 exit 0
