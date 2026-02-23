@@ -34,12 +34,18 @@ This command will:
 ## Usage
 
 ### Global Options (Docker Support)
-If your WireGuard instance runs inside a Docker container, use the `-c` or `--container` flag **before** your command to route the execution through `docker exec`.
+If your WireGuard instance runs inside a Docker container, you must use the `-c` or `--container` flag when running the **`update`** command so the script routes the execution through `docker exec`. 
+
+*(Note: The `show` and `flush` commands interact directly with the local database files and do not require this flag.)*
 
 Examples:
 ```bash
-wgstat -c wg-hub show wg0
-wgstat --container my-wireguard update all
+# Updating requires the container flag so it can reach the live interface
+wgstat -c my-wireguard update all
+
+# Viewing or flushing stats only reads local files, no flag needed
+wgstat show wg0
+wgstat flush wg0
 ```
 
 *(Note: If you answered "Yes" to the Docker prompt during installation, the background systemd service already includes this flag automatically.)*
